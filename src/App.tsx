@@ -2,9 +2,10 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
 import Cadastro from './pages/Cadastro';
 import Questionario from './pages/Questionario';
-import Analise from './pages/Analise';
 import Pagamento from './pages/Pagamento';
-// import Admin from './pages/Admin';
+import StatusPedido from './pages/StatusPedido';
+import Confirmacao from './pages/Confirmacao';
+import Aprovacao from './pages/Aprovacao'; // <--- IMPORT NOVO
 
 function App() {
   return (
@@ -13,9 +14,15 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/cadastro" element={<Cadastro />} />
         <Route path="/questionario" element={<Questionario />} />
-        <Route path="/analise" element={<Analise />} />
+        
+        {/* TELA 1: VALOR + ONGS */}
+        <Route path="/aprovacao" element={<Aprovacao />} />
+        
+        {/* TELA 2: BENEFÍCIOS */}
+        <Route path="/confirmacao" element={<Confirmacao />} />
+        
         <Route path="/pagamento" element={<Pagamento />} />
-        {/* <Route path="/admin" element={<Admin />} /> */}
+        <Route path="/status" element={<StatusPedido />} />
       </Routes>
     </Router>
   );

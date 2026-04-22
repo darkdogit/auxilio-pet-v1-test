@@ -1,6 +1,6 @@
 import { useState, FormEvent, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, Phone, CheckCircle2, Loader2, ArrowLeft } from 'lucide-react';
+import { User, Mail, Phone, CheckCircle2, Loader2, ArrowLeft, LogIn } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { validateFormData, sanitizeInput, formatPhone } from '../utils/validation';
 import { useAnalytics } from '../hooks/useAnalytics';
@@ -14,9 +14,13 @@ function Cadastro() {
   });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [isReturningUser, setIsReturningUser] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   
+  // Estado para controlar a mensagem de sucesso correta
+  const [isPaidUser, setIsPaidUser] = useState(false);
+
   const { trackFormStart, trackFormSubmit } = useAnalytics('cadastro');
   const formStarted = useRef(false);
 
@@ -53,31 +57,68 @@ function Cadastro() {
         ip_address: clientIp
       };
 
-      // CORREÇÃO AQUI: 'as any' para evitar erro de tipagem estrita
+      // Tenta inserir um novo cadastro
       const response = await supabase
         .from('registrations')
         .insert([sanitizedData] as any) 
         .select()
         .single();
 
-      const data = response.data;
       const insertError = response.error;
 
       if (insertError) {
-        console.error('Erro ao cadastrar:', insertError);
+        // SE O E-MAIL JÁ EXISTE (Erro 23505)
         if (insertError.code === '23505') {
-           setError('Este email já está cadastrado. Por favor, use outro.');
+           console.log('Usuário já existe, recuperando dados...');
+           
+           // AQUI MUDOU: Agora selecionamos também o payment_status
+           const { data: existingData, error: fetchError } = await supabase
+             .from('registrations')
+             .select('id, payment_status')
+             .eq('email', sanitizedData.email)
+             .single();
+
+           if (fetchError) {
+             console.error('Erro ao buscar usuário existente:', fetchError);
+           }
+
+           if (existingData) {
+             const user = existingData as any;
+
+             localStorage.setItem('registration_id', user.id);
+             setIsReturningUser(true);
+             setSuccess(true);
+             
+             // Lógica de Redirecionamento Inteligente
+             if (user.payment_status === 'paid') {
+                setIsPaidUser(true); // Muda mensagem para "Pagamento já consta"
+                setTimeout(() => {
+                  navigate('/status'); // Vai para a tela de Status/Sucesso
+                }, 2000);
+             } else {
+                // Se não pagou ou falhou, manda para o questionário (fluxo normal)
+                setTimeout(() => {
+                  navigate('/questionario');
+                }, 2000);
+             }
+             return;
+           } else {
+             setError('Erro ao recuperar cadastro. Tente novamente.');
+           }
         } else {
+           console.error('Erro ao cadastrar:', insertError);
            setError('Erro no sistema ao cadastrar. Tente novamente.');
         }
+        
         trackFormSubmit('cadastro', false, insertError.message);
         setLoading(false);
         return;
       }
 
-      if (data) {
+      // Se for cadastro novo (Sucesso normal)
+      if (response.data) {
         // @ts-ignore
-        localStorage.setItem('registration_id', data.id);
+        localStorage.setItem('registration_id', response.data.id);
         trackFormSubmit('cadastro', true);
         setSuccess(true);
         setFormData({ nomeCompleto: '', email: '', whatsapp: '' });
@@ -135,7 +176,7 @@ function Cadastro() {
                 Identificação do Solicitante
               </h1>
               <p className="text-gray-600">
-                Para iniciar o processo de análise do benefício, precisamos confirmar alguns dados básicos de contato.
+                Para iniciar ou <strong>continuar</strong> seu processo, confirme seus dados de contato.
               </p>
             </div>
 
@@ -143,11 +184,28 @@ function Cadastro() {
               <div className="text-center py-12 animate-fadeIn">
                 <div className="flex justify-center mb-6">
                   <div className="bg-green-100 p-4 rounded-full">
-                    <CheckCircle2 className="text-green-600" size={48} />
+                    {isPaidUser ? (
+                       <ShieldCheck className="text-green-600" size={48} />
+                    ) : isReturningUser ? (
+                      <LogIn className="text-green-600" size={48} />
+                    ) : (
+                      <CheckCircle2 className="text-green-600" size={48} />
+                    )}
                   </div>
                 </div>
-                <h2 className="text-2xl font-bold text-gray-800 mb-2">Sucesso!</h2>
-                <p className="text-gray-600">Redirecionando para o questionário...</p>
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                  {isPaidUser ? 'Pagamento Localizado!' : isReturningUser ? 'Bem-vindo de volta!' : 'Sucesso!'}
+                </h2>
+                <p className="text-gray-600">
+                  {isPaidUser 
+                    ? 'Verificamos que você já realizou a contribuição.' 
+                    : isReturningUser 
+                      ? 'Recuperamos seu cadastro.' 
+                      : 'Cadastro realizado.'
+                  }
+                  <br/>
+                  {isPaidUser ? 'Indo para status do pedido...' : 'Redirecionando...'}
+                </p>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6">
@@ -264,6 +322,13 @@ function Cadastro() {
       </main>
     </div>
   );
+}
+
+// Adicionei este componente auxiliar simples para não quebrar o import
+function ShieldCheck({ size, className }: { size: number, className: string }) {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" /><path d="m9 12 2 2 4-4" /></svg>
+    );
 }
 
 export default Cadastro;

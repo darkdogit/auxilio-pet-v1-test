@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Heart, CheckCircle2, Sparkles, AlertCircle, Building2, User, CreditCard } from 'lucide-react';
 import { useAnalytics } from '../hooks/useAnalytics';
+import { supabase } from '../lib/supabase';
 
 function Analise() {
   const navigate = useNavigate();
@@ -10,7 +11,6 @@ function Analise() {
   const [isProcessing, setIsProcessing] = useState(false);
   const { trackButtonClick } = useAnalytics('analise');
 
-  // ... (Estados mantidos)
   const [bankData, setBankData] = useState({
     chavePix: '',
     banco: '',
@@ -26,9 +26,34 @@ function Analise() {
     return () => clearTimeout(timer);
   }, []);
 
-  const handleBankingSubmit = (e: React.FormEvent) => {
+  const handleBankingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
+
+    try {
+      const registrationId = localStorage.getItem('registration_id');
+      
+      if (registrationId) {
+        // CORREÇÃO AQUI: Adicionei (as any) logo após o .from('registrations')
+        // Isso diz ao TypeScript para "confiar na gente" e ignorar que as colunas não estão no tipo oficial ainda.
+        const { error } = await (supabase.from('registrations') as any)
+          .update({
+            chave_pix: bankData.chavePix,
+            instituicao_bancaria: bankData.banco,
+            reside_brasil: bankData.resideBrasil === 'Sim',
+            nome_titular: bankData.nomeTitular,
+            documento_titular: bankData.rg
+          })
+          .eq('id', registrationId);
+
+        if (error) {
+          console.error('Erro ao salvar dados bancários:', error);
+        }
+      }
+    } catch (err) {
+      console.error('Erro inesperado ao salvar:', err);
+    }
+
     setTimeout(() => {
       setIsProcessing(false);
       setCurrentStep('contribution');

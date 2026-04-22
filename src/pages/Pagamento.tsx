@@ -1,256 +1,279 @@
-import { useState, useEffect, useRef } from 'react';
-import { Heart, Copy, Check, QrCode, Loader2, AlertCircle } from 'lucide-react';
-import { useAnalytics } from '../hooks/useAnalytics';
+import { useState, useEffect } from 'react';
+import { QrCode, Lock, FileText, Check, Copy, Loader2, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useAnalytics } from '../hooks/useAnalytics';
+
+const VALOR_REAL = 59.00; // Ajuste o valor conforme necessário
+const VALOR_CENTAVOS = 5900;
 
 function Pagamento() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [pixData, setPixData] = useState<{ qrcode_image: string; qrcode_text: string } | null>(null);
   const [copied, setCopied] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [pixData, setPixData] = useState<{ qrcode: string; qrcode_text: string } | null>(null);
-  const [error, setError] = useState('');
-  
+  const [verificandoPagamento, setVerificandoPagamento] = useState(true);
+  const [userData, setUserData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    document: ''
+  });
+
   const { trackButtonClick } = useAnalytics('pagamento');
-  const hasFetched = useRef(false);
 
-  // Credenciais da OnexPay
-  const ONEXPAY_AUTH = "Basic c2tfbGl2ZV92MlViNExBUUZTTUJNOE81RzRHd09pZkVxWlpGUUpZdWtxTmo3cXFkTHM6eA==";
-  const VALOR_EM_CENTAVOS = 5900; // R$ 59,00
-
+  // 1. Carregar dados do usuário
   useEffect(() => {
-    if (hasFetched.current) return;
-    hasFetched.current = true;
-    generatePix();
-  }, []);
-
-  const generatePix = async () => {
-    setLoading(true);
-    setError('');
-
-    try {
+    async function loadUserData() {
       const regId = localStorage.getItem('registration_id');
       
-      let customerData = {
-        name: "Beneficiário Auxílio",
-        email: "contato@auxilio.pet",
-        phone: "11999999999",
-        document: { type: "cpf", number: "40038927047" }
-      };
-
-      if (regId) {
-        const { data } = await supabase
-          .from('registrations')
-          .select('full_name, email, whatsapp')
-          .eq('id', regId)
-          .single();
-
-        // CORREÇÃO: Força 'any' para evitar erro de propriedade inexistente
-        const user = data as any;
-
-        if (user) {
-          const cleanPhone = user.whatsapp ? user.whatsapp.replace(/\D/g, '') : customerData.phone;
-          customerData = {
-            ...customerData,
-            name: user.full_name || customerData.name,
-            email: user.email || customerData.email,
-            phone: cleanPhone,
-          };
-        }
+      if (!regId) {
+        navigate('/cadastro');
+        return;
       }
 
-      const response = await fetch('https://api.onexpay.com.br/v1/transactions', {
-        method: 'POST',
-        headers: {
-          'Authorization': ONEXPAY_AUTH,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          amount: VALOR_EM_CENTAVOS,
-          paymentMethod: "pix",
-          customer: customerData,
-          items: [
-            {
-              title: "Contribuição Solidária - Auxílio Pet",
-              unitPrice: VALOR_EM_CENTAVOS,
-              quantity: 1,
-              tangible: false
-            }
-          ],
-          pix: {
-            expiresIn: 3600
+      // CORREÇÃO: Removi 'document_cpf' da busca pois essa coluna não existe no banco
+      const { data } = await supabase
+        .from('registrations')
+        .select('full_name, email, whatsapp, payment_status') 
+        .eq('id', regId)
+        .single();
+      
+      if (data) {
+        const user = data as any;
+        
+        // Se já pagou, redireciona
+        if (user.payment_status === 'paid') {
+            navigate('/status');
+            return;
+        }
+
+        setUserData({
+          name: user.full_name || '',
+          email: user.email || '',
+          phone: user.whatsapp || '',
+          document: '' // Começa vazio para o usuário digitar
+        });
+      }
+      setVerificandoPagamento(false);
+    }
+    loadUserData();
+  }, [navigate]);
+
+  // 2. Polling (Verificação contínua)
+  useEffect(() => {
+    if (!pixData) return;
+
+    const intervalId = setInterval(async () => {
+      const regId = localStorage.getItem('registration_id');
+      if (!regId) return;
+
+      const { data } = await supabase
+        .from('registrations')
+        .select('payment_status')
+        .eq('id', regId)
+        .single();
+
+      if (data && (data as any).payment_status === 'paid') {
+        clearInterval(intervalId);
+        navigate('/status');
+      }
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, [pixData, navigate]);
+
+  const handleGeneratePix = async () => {
+    if (!userData.email) {
+        alert("Erro: Não foi possível identificar seu cadastro. Por favor, volte e cadastre-se novamente.");
+        navigate('/cadastro');
+        return;
+    }
+
+    setLoading(true);
+    setPixData(null);
+
+    try {
+      const cleanPhone = userData.phone.replace(/\D/g, '');
+      const cleanDoc = userData.document.replace(/\D/g, '') || "40038927047";
+      
+      const currentUrl = window.location.origin;
+      const webhookUrl = `${currentUrl}/webhook.php`;
+
+      const payload = {
+        amount: VALOR_CENTAVOS,
+        paymentMethod: "pix",
+        postbackUrl: webhookUrl,
+        customer: {
+          name: userData.name,
+          email: userData.email,
+          phone: cleanPhone || "11999999999",
+          document: {
+            type: "cpf",
+            number: cleanDoc
           }
-        })
+        },
+        items: [
+          {
+            title: "Contribuicao Solidaria",
+            unitPrice: VALOR_CENTAVOS,
+            quantity: 1,
+            tangible: false
+          }
+        ],
+        pix: {
+          expiresIn: 3600
+        }
+      };
+
+      const response = await fetch('/pix_proxy.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        console.error('Erro Gateway:', data);
-        throw new Error('Falha na comunicação com o banco.');
+        alert('Erro ao gerar PIX: ' + (data.message || JSON.stringify(data)));
+        return;
       }
 
-      const qrCodeImage = data.pix?.qrcode || data.qrcode || data.qrCodeImage; 
-      const copyPaste = data.pix?.qrcode_text || data.qrcode_text || data.emv;
+      const pixString = data.pix?.qrcode || data.qrcode;
 
-      if (!copyPaste) {
-        throw new Error('Código PIX não gerado.');
+      if (pixString) {
+        setPixData({
+          qrcode_image: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(pixString)}`,
+          qrcode_text: pixString
+        });
+        trackButtonClick('pix_gerado', { valor: VALOR_REAL });
+      } else {
+        alert('Erro: A API não retornou o código do Pix.');
       }
 
-      setPixData({
-        qrcode: qrCodeImage, 
-        qrcode_text: copyPaste
-      });
-
-    } catch (err) {
-      console.error(err);
-      setError('Ocorreu um erro ao gerar o PIX. Atualize a página para tentar novamente.');
+    } catch (error) {
+      console.error('Erro:', error);
+      alert('Erro técnico ao conectar.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCopyPix = async () => {
-    if (!pixData?.qrcode_text) return;
-    
-    try {
-      await navigator.clipboard.writeText(pixData.qrcode_text);
-      trackButtonClick('copiar_pix', { valor: 59.00 });
+  const handleCopyPix = () => {
+    if (pixData?.qrcode_text) {
+      navigator.clipboard.writeText(pixData.qrcode_text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Erro ao copiar:', err);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-green-900 to-emerald-950 relative overflow-hidden font-sans">
-      <div className="absolute inset-0 bg-[url('https://images.pexels.com/photos/4587998/pexels-photo-4587998.jpeg?auto=compress&cs=tinysrgb&w=1920')] bg-cover bg-center opacity-10"></div>
-
-      <div className="absolute inset-0">
-        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-emerald-900/50 via-green-900/30 to-transparent"></div>
-      </div>
-
-      <nav className="relative z-20 container mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="glass-effect rounded-xl sm:rounded-2xl mt-3 sm:mt-6 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-center">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="bg-gradient-to-br from-white to-green-50 rounded-lg sm:rounded-xl p-2 sm:p-2.5 shadow-lg shadow-green-500/20">
-              <Heart className="text-green-600" size={24} fill="currentColor" />
-            </div>
-            <span className="text-gray-800 text-lg sm:text-xl md:text-2xl font-bold tracking-tight">AUXILIO PET</span>
+  if (verificandoPagamento) {
+      return (
+          <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" />
           </div>
+      );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center font-sans">
+      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
+        
+        <div className="text-center">
+          <h2 className="mt-2 text-3xl font-extrabold text-gray-900">Contribuição Solidária</h2>
+          <p className="mt-2 text-sm text-gray-600">
+            Valor: <strong className="text-emerald-600 text-lg">R$ {VALOR_REAL.toFixed(2).replace('.', ',')}</strong>
+          </p>
         </div>
-      </nav>
 
-      <main className="relative z-10 container mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-12">
-        <div className="max-w-2xl mx-auto">
-          <div className="glass-effect rounded-2xl sm:rounded-3xl p-6 sm:p-8 animate-fadeIn">
+        {!userData.email && !loading && (
+             <div className="bg-red-50 p-4 rounded-lg border border-red-200 text-red-700 text-sm flex items-center gap-2">
+                 <AlertCircle size={20} />
+                 Erro: Cadastro não carregado. Tente recarregar a página.
+             </div>
+        )}
 
-            <div className="text-center mb-6">
-              <div className="flex justify-center mb-4">
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-2xl shadow-green-500/50">
-                  <QrCode className="text-white" size={36} strokeWidth={2} />
-                </div>
+        <div className="text-center border-b border-gray-100 pb-4">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center justify-center gap-2">
+            <QrCode className="w-5 h-5 text-emerald-600" />
+            Pagamento via Pix
+          </h3>
+        </div>
+
+        <div className="animate-fadeIn">
+          {!pixData ? (
+            <div className="space-y-4">
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-6">
+                <p className="text-sm text-blue-800 leading-relaxed text-center">
+                  Liberação imediata após o pagamento.
+                </p>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">Pagamento via PIX</h2>
-              <p className="text-gray-600 text-sm sm:text-base">Contribuição Solidária</p>
-            </div>
 
-            <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 sm:p-6 mb-6 text-center">
-              <p className="text-gray-600 text-sm sm:text-base mb-2">Valor a pagar</p>
-              <p className="text-4xl sm:text-5xl font-bold text-emerald-700">
-                R$ 59,00
-              </p>
+              <InputField 
+                label="CPF do Pagador" 
+                placeholder="000.000.000-00" 
+                icon={<FileText className="w-5 h-5 text-gray-400" />}
+                value={userData.document}
+                onChange={(e: any) => setUserData({...userData, document: e.target.value})}
+              />
+              <button
+                onClick={handleGeneratePix}
+                disabled={loading || !userData.email}
+                className="w-full flex justify-center items-center gap-2 py-4 px-4 rounded-lg shadow-sm text-lg font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors mt-4 disabled:opacity-70 disabled:bg-gray-400"
+              >
+                {loading ? <Loader2 className="animate-spin" /> : <Lock className="w-5 h-5" />}
+                {loading ? 'Gerando...' : 'Gerar Pix'}
+              </button>
             </div>
-
-            {loading ? (
-              <div className="py-12 text-center">
-                <Loader2 className="animate-spin mx-auto text-emerald-600 mb-4" size={48} />
-                <p className="text-gray-500">Gerando QR Code exclusivo...</p>
+          ) : (
+            <div className="text-center animate-fadeIn">
+              <div className="flex justify-center mb-2">
+                 <span className="text-xs font-semibold text-emerald-600 animate-pulse">Aguardando confirmação do banco...</span>
               </div>
-            ) : error ? (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center mb-6">
-                <AlertCircle className="mx-auto text-red-500 mb-3" size={32} />
-                <p className="text-red-700 mb-4">{error}</p>
-                <button 
-                  onClick={() => window.location.reload()}
-                  className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  Tentar Novamente
+
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 mb-6">
+                <p className="text-emerald-800 font-medium text-sm">
+                  Código gerado! Assim que você pagar, essa tela atualizará sozinha.
+                </p>
+              </div>
+
+              <div className="bg-white border-2 border-emerald-500 rounded-xl p-4 inline-block shadow-sm mb-4">
+                <img src={pixData.qrcode_image} alt="QR Code Pix" className="w-48 h-48 object-contain" />
+              </div>
+              
+              <div className="relative mb-4">
+                <input type="text" readOnly value={pixData.qrcode_text} className="w-full bg-gray-50 border border-gray-300 text-sm rounded-lg p-3 pr-12 font-mono truncate" />
+                <button onClick={handleCopyPix} className="absolute right-2 top-1/2 -translate-y-1/2 text-emerald-600 p-1">
+                  {copied ? <Check size={20} /> : <Copy size={20} />}
                 </button>
               </div>
-            ) : (
-              <div className="bg-gradient-to-br from-white/10 to-white/5 border border-gray-200 rounded-2xl p-6 mb-6">
-                <h3 className="text-gray-800 font-bold text-lg mb-4 text-center">Escaneie o QR Code</h3>
 
-                <div className="bg-white rounded-2xl p-4 sm:p-6 mb-4 flex justify-center border border-gray-100 shadow-inner">
-                  {pixData?.qrcode ? (
-                    <img
-                      src={pixData.qrcode.startsWith('http') ? pixData.qrcode : `data:image/png;base64,${pixData.qrcode}`}
-                      alt="QR Code PIX"
-                      className="w-48 h-48 sm:w-64 sm:h-64 md:w-72 md:h-72 object-contain"
-                    />
-                  ) : (
-                    <div className="w-48 h-48 flex items-center justify-center text-gray-400">QR Code Indisponível</div>
-                  )}
-                </div>
-
-                <div className="text-center mb-6">
-                  <p className="text-gray-600 text-sm sm:text-base leading-relaxed">
-                    Abra o app do seu banco, escolha pagar via PIX e escaneie o código acima
-                  </p>
-                </div>
-
-                <div className="border-t border-gray-200 pt-6">
-                  <h4 className="text-gray-800 font-semibold text-base mb-3 text-center">Ou copie o código PIX</h4>
-
-                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4">
-                    <p className="text-gray-500 text-xs sm:text-sm break-all font-mono leading-relaxed line-clamp-3">
-                      {pixData?.qrcode_text}
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={handleCopyPix}
-                    className="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-700 hover:to-emerald-800 text-white font-bold text-base sm:text-lg rounded-xl shadow-xl shadow-green-500/30 transition-all duration-300 active:scale-95 flex items-center justify-center gap-2"
-                  >
-                    {copied ? (
-                      <>
-                        <Check size={20} />
-                        Código Copiado!
-                      </>
-                    ) : (
-                      <>
-                        <Copy size={20} />
-                        Copiar Código PIX
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
-              <p className="text-amber-800 text-sm sm:text-base text-center leading-relaxed font-medium">
-                Após realizar o pagamento, a confirmação será processada em até 5 minutos e você receberá a liberação do auxílio.
-              </p>
+              <button
+                onClick={handleCopyPix}
+                className="w-full flex justify-center items-center gap-2 py-3 px-4 border rounded-lg font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+              >
+                {copied ? 'Copiado!' : 'Copiar Código Pix'}
+              </button>
             </div>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <p className="text-blue-800 text-xs sm:text-sm text-center leading-relaxed">
-                Esta contribuição é processada de forma segura pela OnexPay.
-              </p>
-            </div>
-
-          </div>
+          )}
         </div>
-      </main>
+        
+        <div className="flex items-center justify-center gap-2 text-xs text-gray-500 mt-6 pt-6 border-t border-gray-100">
+          <Lock className="w-3 h-3" /> Ambiente Seguro
+        </div>
+      </div>
+    </div>
+  );
+}
 
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fadeIn { animation: fadeIn 0.6s ease-out forwards; }
-      `}</style>
+function InputField({ label, icon, type = "text", placeholder, value, onChange }: any) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <div className="relative rounded-md shadow-sm">
+        {icon && <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">{icon}</div>}
+        <input type={type} value={value} onChange={onChange} className={`block w-full py-3 text-gray-900 border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm ${icon ? 'pl-10' : 'pl-4'}`} placeholder={placeholder} />
+      </div>
     </div>
   );
 }

