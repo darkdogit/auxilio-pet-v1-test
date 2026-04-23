@@ -1,9 +1,9 @@
 import { 
   Award, Stethoscope, Syringe, Pill, Activity, ShoppingBag, 
   ArrowRight, HeartPulse, Banknote, CheckCircle2, ChevronRight, 
-  ChevronDown, Menu, X 
-} from 'lucide-react';
-import { useState } from 'react';
+  ChevronDown, Menu, X, MapPin, Heart 
+} from 'lucide-react'; 
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SEO } from '../components/SEO';
 import { useAnalytics } from '../hooks/useAnalytics';
@@ -12,13 +12,33 @@ import { useAnalytics } from '../hooks/useAnalytics';
 const SP_LOGO_URL = "/sp.jpeg"; 
 // URL do Ícone de Libras
 const LIBRAS_ICON_URL = "/access_icon.png";
+// URL da Logo de Barueri
+const BARUERI_LOGO_URL = "/logo_barueri.png";
+
+// LISTA DE BANNERS
+const BANNERS = [
+  { 
+    image: "/banner-bet1.jpg", 
+    link: "https://betnacional.bet.br/" 
+  },
+  { 
+    image: "/banner-bet2.jpg", 
+    link: "https://www.betano.bet.br/" 
+  },
+  { 
+    image: "/banner-bet3.jpg", 
+    link: "https://superbet.bet.br/" 
+  }
+];
 
 function Home() {
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showBetPopup, setShowBetPopup] = useState(false);
+  const [randomBanner, setRandomBanner] = useState({ image: "", link: "" });
+  
   useAnalytics('home'); 
 
-  // Links do menu Gov.br
   const govLinks = [
     { text: 'Serviços', url: 'https://www.gov.br/pt-br/servicos' },
     { text: 'Temas em Destaque', url: 'https://www.gov.br/pt-br/temas' },
@@ -33,13 +53,50 @@ function Home() {
     { text: 'Dados do Governo Federal', url: 'https://dados.gov.br' },
   ];
 
+  useEffect(() => {
+    const randomIndex = Math.floor(Math.random() * BANNERS.length);
+    setRandomBanner(BANNERS[randomIndex]);
+
+    const timer = setTimeout(() => {
+      setShowBetPopup(true);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <>
       <SEO
         title="Auxílio Pet"
-        description="Programa de proteção animal da Secretaria do Meio Ambiente e Defesa Animal. Apoio financeiro para saúde e alimentação pet."
-        keywords="auxilio pet, são paulo, governo sp, ajuda animal, cadastro pet"
+        description="Programa de proteção animal da Prefeitura de Barueri. Apoio financeiro para saúde e alimentação pet."
+        keywords="auxilio pet, barueri, prefeitura barueri, ajuda animal, cadastro pet"
       />
+
+      {/* --- POP-UP DE ANÚNCIO DE BET --- */}
+      {showBetPopup && randomBanner.image && (
+        <div className="fixed bottom-4 right-4 z-[100] w-[90%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl animate-fadeInUp">
+          <button 
+            onClick={() => setShowBetPopup(false)}
+            className="absolute top-2 right-2 z-10 p-1.5 bg-black/50 hover:bg-black/80 text-white rounded-full transition-colors backdrop-blur-sm"
+            aria-label="Fechar anúncio"
+          >
+            <X size={18} />
+          </button>
+          
+          <a 
+            href={randomBanner.link} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            onClick={() => setShowBetPopup(false)}
+            className="block w-full h-full bg-black"
+          >
+            <img 
+              src={randomBanner.image} 
+              alt="Promoção Exclusiva" 
+              className="w-full h-auto object-cover"
+            />
+          </a>
+        </div>
+      )}
 
       {/* --- MENU LATERAL (DRAWER) --- */}
       <div 
@@ -69,7 +126,7 @@ function Home() {
           </div>
 
           <nav className="flex flex-col">
-            {govLinks.map((link, index) => (
+            {govLinks.map((link: { text: string, url: string }, index: number) => (
               <a 
                 key={index} 
                 href={link.url}
@@ -88,8 +145,8 @@ function Home() {
       <div className="min-h-screen flex flex-col bg-white font-sans text-[#333]">
         
         {/* --- BARRA SUPERIOR --- */}
-        <div className="w-full bg-[#2D2D2D] py-1 px-4 text-xs flex justify-between items-center font-sans text-white">
-          <span className="font-bold tracking-wider">GOVERNO DO ESTADO DE SÃO PAULO</span>
+        <div className="w-full bg-[#1351B4] py-1 px-4 text-xs flex justify-between items-center font-sans text-white">
+          <span className="font-bold tracking-wider">PREFEITURA DE BARUERI</span>
         </div>
         <div className="w-full h-[4px] bg-gradient-to-r from-red-600 via-white to-black"></div>
 
@@ -98,7 +155,6 @@ function Home() {
           <div className="container mx-auto px-4 py-3 md:py-0 md:h-28 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 sm:gap-4 flex-1">
               
-              {/* BOTÃO HAMBURGUER */}
               <button 
                 onClick={() => setIsMenuOpen(true)}
                 className="flex items-center gap-2 text-[#1351B4] hover:bg-blue-50 px-2 sm:px-3 py-2 rounded-lg transition-colors group"
@@ -122,21 +178,20 @@ function Home() {
                 
                 <div className="h-8 md:h-12 w-px bg-gray-300 mx-1 hidden md:block"></div>
 
-                {/* TEXTO SECRETARIA (OCULTO NO MOBILE PARA NÃO TAMPAR O ÍCONE) */}
-                <div className="hidden md:flex flex-col justify-center">
-                  <span className="text-[#333] font-semibold text-[10px] md:text-sm leading-tight uppercase tracking-wide">
-                    Secretaria do
-                  </span>
-                  <span className="text-[#333] font-black text-xs md:text-2xl tracking-tight leading-none uppercase">
-                    Meio Ambiente<br/>e Defesa Animal
-                  </span>
+                <div className="flex flex-col justify-center">
+                  <img 
+                    src={BARUERI_LOGO_URL} 
+                    alt="Prefeitura de Barueri" 
+                    className="h-12 sm:h-14 md:h-18 w-auto object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none'; 
+                    }}
+                  />
                 </div>
               </div>
             </div>
 
             <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-              
-              {/* ÍCONE DE LIBRAS (AJUSTADO PARA NÃO TAMPAR NADA) */}
               <img 
                 src={LIBRAS_ICON_URL}
                 alt="Acessível em Libras"
@@ -172,12 +227,12 @@ function Home() {
                   />
                 </div>
                 <div className="mt-4">
-                  <span className="text-[#1351B4] font-bold text-xs uppercase tracking-wider mb-1 block">Programa Estadual</span>
+                  <span className="text-[#1351B4] font-bold text-xs uppercase tracking-wider mb-1 block">Programa Municipal</span>
                   <h1 className="text-3xl md:text-4xl font-black text-[#333] group-hover:text-[#1351B4] transition-colors leading-tight mb-2">
-                    Inscrições abertas para o Auxílio Pet SP 2026
+                    Inscrições abertas para o Auxílio Pet Barueri 2026
                   </h1>
                   <p className="text-gray-600 text-lg leading-relaxed">
-                    Famílias de baixa renda do estado já podem solicitar o benefício para custeio de alimentação e saúde veterinária.
+                    Famílias de baixa renda da cidade já podem solicitar o benefício para custeio de alimentação e saúde veterinária.
                   </p>
                 </div>
               </div>
@@ -212,7 +267,7 @@ function Home() {
                     Consulta de Elegibilidade
                   </h3>
                   <p className="text-gray-600 mb-4 text-sm">
-                    Verifique se o seu cadastro estadual está apto para receber o auxílio através do CadÚnico.
+                    Verifique se o seu cadastro está apto para receber o auxílio através do CadÚnico.
                   </p>
                   <div className="text-[#1351B4] font-bold text-sm flex items-center gap-1 uppercase">
                     Acessar serviço <ChevronRight size={16} />
@@ -227,6 +282,7 @@ function Home() {
             <div className="h-px bg-gray-200 my-4"></div>
           </div>
 
+          {/* --- NOTÍCIA 1: LEI APROVADA --- */}
           <section className="container mx-auto px-4 py-8">
             <div className="bg-white border border-gray-200 rounded overflow-hidden shadow-sm hover:shadow-md transition-shadow">
               <div className="grid md:grid-cols-2">
@@ -271,6 +327,39 @@ function Home() {
             <div className="h-px bg-gray-200 my-4"></div>
           </div>
 
+          {/* --- NOTÍCIA 2: NOVA IMAGEM GERADA --- */}
+          <section className="container mx-auto px-4 py-8">
+            <div className="bg-white border border-gray-200 rounded overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+              <div className="grid md:grid-cols-2">
+                {/* Texto na Esquerda */}
+                <div className="p-8 flex flex-col justify-center bg-[#F8F9FA] order-2 md:order-1">
+                  <span className="text-[#1351B4] font-bold text-xs uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <Award size={16} /> Parceria de Sucesso
+                  </span>
+                  <h2 className="text-3xl md:text-4xl font-black text-[#333] mb-4 leading-tight">
+                    União por Barueri
+                  </h2>
+                  <p className="text-gray-600 text-lg leading-relaxed border-l-4 border-[#1351B4] pl-4">
+                    Projeto do nosso atual presidente para Barueri em colaboração com <strong>Bruna Furlan</strong>, <strong>Márcio França</strong>, <strong>Rubens Furlan</strong> e <strong>Beto Piteri</strong>.
+                  </p>
+                </div>
+                {/* Imagem na Direita */}
+                <div className="h-full min-h-[300px] order-1 md:order-2">
+                  <img 
+                    src="/noticia-barueri.jpg"
+                    alt="Presidente e autoridades de Barueri" 
+                    className="w-full h-full object-cover object-top"
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div className="container mx-auto px-4">
+            <div className="h-px bg-gray-200 my-4"></div>
+          </div>
+
+          {/* --- APOIADORES --- */}
           <section className="container mx-auto px-4 py-8">
             <h2 className="text-3xl font-bold text-[#333] mb-8 border-l-8 border-[#1351B4] pl-4">
               Apoiadores do Projeto
@@ -291,10 +380,10 @@ function Home() {
                   quote: 'Esse auxílio é uma vitória histórica para a proteção animal no Brasil.' 
                 },
                 { 
-                  name: 'Paolla Oliveira', 
-                  role: 'Atriz e Tutora', 
+                  name: 'Rene Silva', 
+                  role: 'Secretário de Obras', 
                   img: '/paolla.jpg', 
-                  quote: 'Garantir alimentação e saúde para os pets é um ato de amor e responsabilidade.' 
+                  quote: 'Através da administração de mais de 100 milhões em pasta, garantiremos a dignidade aos animais!' 
                 }
               ].map((item, index) => (
                 <div key={index} className="group cursor-pointer">
@@ -347,23 +436,41 @@ function Home() {
             </div>
           </section>
 
-          <footer className="bg-[#2D2D2D] text-white pt-12 pb-8">
-            <div className="container mx-auto px-4">
+          {/* --- NOVO RODAPÉ --- */}
+          <footer className="relative bg-gradient-to-b from-[#071D41] to-[#1351B4] text-white pt-16 pb-8 overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 via-blue-400 to-blue-600"></div>
+            <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/5 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute bottom-0 left-10 w-64 h-64 bg-blue-400/10 rounded-full blur-2xl pointer-events-none"></div>
+
+            <div className="container mx-auto px-4 relative z-10">
               <div className="flex flex-col items-center justify-center text-center gap-6">
-                <div>
-                  <div className="font-bold text-2xl mb-2 uppercase tracking-wide">Secretaria do Meio Ambiente<br/>e Defesa Animal</div>
-                  <p className="text-gray-400 text-sm max-w-md mx-auto">
-                    Governo do Estado de São Paulo.<br/>
-                    Av. Prof. Frederico Hermann Júnior, 345 - Alto de Pinheiros, São Paulo - SP.
-                  </p>
+                
+                <div className="mb-2">
+                  <img 
+                    src="/logo_barueri.png" 
+                    alt="Logo Prefeitura de Barueri" 
+                    className="h-20 md:h-28 w-auto brightness-0 invert opacity-90 hover:opacity-100 transition-opacity"
+                  />
+                </div>
+                
+                <div className="w-12 h-1 bg-blue-400/50 mx-auto rounded-full mb-4"></div>
+                
+                <div className="inline-flex items-center justify-center gap-3 text-blue-50 bg-white/10 px-6 py-3.5 rounded-full border border-white/10 backdrop-blur-md shadow-xl max-w-full">
+                  <MapPin size={20} className="text-blue-300 shrink-0" />
+                  <span className="text-sm md:text-base font-medium">
+                    Rua Prof. João da Mata e Luz, 84 - Centro, Barueri - SP
+                  </span>
                 </div>
               </div>
-              <div className="border-t border-gray-700 mt-12 pt-8 text-xs text-center text-gray-500">
-                &copy; {new Date().getFullYear()} Governo do Estado de São Paulo. Todos os direitos reservados.
+
+              <div className="border-t border-white/10 mt-16 pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-blue-200/70 font-medium">
+                <p>&copy; {new Date().getFullYear()} Prefeitura Municipal de Barueri. Todos os direitos reservados.</p>
+                <p className="flex items-center gap-1.5 uppercase tracking-wider">
+                  Feito com <Heart size={12} className="text-red-400 fill-current animate-pulse" /> para os pets
+                </p>
               </div>
             </div>
           </footer>
-
         </main>
       </div>
     </>

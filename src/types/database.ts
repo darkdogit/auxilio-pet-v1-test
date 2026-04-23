@@ -15,6 +15,17 @@ export interface Registration {
   selfie_url?: string;
   pet_photos?: string[];
   created_at: string;
+  // --- NOVAS COLUNAS ADICIONADAS ---
+  payment_status?: string;
+  payment_id?: string;
+  payment_data?: Json;
+  chave_pix?: string;
+  instituicao_bancaria?: string;
+  reside_brasil?: boolean;
+  nome_titular?: string;
+  documento_titular?: string;
+  status_analise?: string;
+  status_saque?: string;
 }
 
 export interface PetQuestionnaire {
